@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alphabet Balloons</title>
+
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+        width: 100%;
+        display: flex;
+        box-sizing: border-box;
+        border: 5px;
+        border-radius: 5px;
+        border-style: solid;
+        cursor: pointer;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="animation-container">
+      <img
+        src="Assets/BurstAnimation.gif"
+        alt="Burst Animation"
+        class="burst-animation"
+        style="display: none"
+      />
+    </div>
+    <button class="play-again-button">Play Again</button>
+    <div class="score-display">Score: 0</div>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        drawBackground();
+      });
+
+      const backgroundImage = new Image();
+      backgroundImage.src = "Assets/Background/backgroundImage.png";
+
+      function drawBackground() {
+        ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+      }
+
+      const alphabetArray = [...Array(26).keys()].map((i) => ({
+        src: `Assets/GeneralAssets/Alphabets/Alpha${String.fromCharCode(
+          65 + i
+        )}.png`,
+      }));
+
+      const alphabetImages = alphabetArray.map((alphabet) => {
+        const img = new Image();
+        img.src = alphabet.src;
+        return img;
+      });
+
+      const balloonArray = [
+        "Assets/GeneralAssets/Balloons/BalloonBlue1.png",
+        "Assets/GeneralAssets/Balloons/BalloonBlue2.png",
+        "Assets/GeneralAssets/Balloons/BalloonGreen1.png",
+        "Assets/GeneralAssets/Balloons/BalloonGreen2.png",
+        "Assets/GeneralAssets/Balloons/BalloonOrange.png",
+        "Assets/GeneralAssets/Balloons/BalloonPink.png",
+        "Assets/GeneralAssets/Balloons/BalloonPink2.png",
+        "Assets/GeneralAssets/Balloons/BalloonPurple.png",
+        "Assets/GeneralAssets/Balloons/BalloonRed.png",
+        "Assets/GeneralAssets/Balloons/BalloonYellow.png",
+      ].map((src) => {
+        const img = new Image();
+        img.src = src;
+        return img;
+      });
+
+      // Importing balloon string
+      const balloonString = new Image();
+      balloonString.src = "Assets/GeneralAssets/Balloons/BalloonString.png";
+
+      const pump = { x: window.innerWidth - 407, y: window.innerHeight - 407 };
+      const pumpParts = [
+        { src: "Assets/GeneralAssets/Pump/PumpConnector.png", x: 50, y: 170 },
+        { src: "Assets/GeneralAssets/Pump/PumpHandle.png", x: 190, y: 30 },
+        { src: "Assets/GeneralAssets/Pump/PumpSymbol.png", x: 190, y: 190 },
+      ];
+
+      const pumpImages = pumpParts.map((part) => {
+        const img = new Image();
+        img.src = part.src;
+        return { img, x: part.x, y: part.y };
+      });
+
+      let shakeOffsetX = 0;
+      let shakeOffsetY = 0;
+      let symbolShakeX = 0;
+      let symbolShakeY = 0;
+      let rotationAngle = 0;
+      let scale = 1;
+      let handleY = 0;
+      let handleMoving = false;
+      let handleDirection = 1;
+      let connectorShaking = false;
+      let symbolShaking = false;
+
+      function applyPumpAnimations() {
+        if (connectorShaking) {
+          shakeOffsetX = Math.random() * 1 - 0.5;
+          shakeOffsetY = Math.random() * 1 - 0.5;
+        }
+        if (symbolShaking) {
+          symbolShakeX = Math.random() * 3 - 1.5;
+          symbolShakeY = Math.random() * 3 - 1.5;
+        }
+        if (handleMoving) {
+          handleY += handleDirection * 50;
+          if (handleY >= 200) {
+            handleDirection = -1;
+          } else if (handleY <= 0) {
+            handleDirection = 1;
+            handleMoving = false;
+          }
+        }
+      }
+
+      function assemblePump() {
+        pumpImages.forEach((part, index) => {
+          let x = pump.x + part.x,
+            y = pump.y + part.y;
+          ctx.save();
+          if (index === 0 && connectorShaking) {
+            // Pump Connector shake
+            x += shakeOffsetX;
+            y += shakeOffsetY;
+          } else if (index === 1 && handleMoving) {
+            // Pump Handle up-and-down movement
+            y += handleY;
+          } else if (index === 2 && symbolShaking) {
+            // Pump Symbol vibration
+            x += symbolShakeX;
+            y += symbolShakeY;
+          }
+          ctx.drawImage(part.img, x, y, 250, 250);
+          ctx.restore();
+        });
+      }
+
+      // An empty array to keep track of multiple balloons
+      const balloons = [];
+
+      // alphabet index keeps track of the alphabet rendered.
+      let alphabetIndex = 0;
+
+      function drawBalloons() {
+        balloons.forEach((balloon) => {
+          ctx.drawImage(
+            balloon.balloonImage,
+            balloon.x,
+            balloon.y,
+            balloon.width,
+            balloon.height
+          );
+          const alphabetX = balloon.x + balloon.width / 4,
+            alphabetY = balloon.y + balloon.height / 4;
+          ctx.drawImage(
+            balloon.alphabetImg,
+            alphabetX,
+            alphabetY,
+            balloon.width / 2,
+            balloon.height / 2
+          );
+
+          // Drawing the string
+          const stringX =
+            balloon.x +
+            balloon.width / 2 -
+            balloon.balloonString.width / 2 +
+            185;
+          const stringY = balloon.y + balloon.height - 50;
+          ctx.drawImage(
+            balloon.balloonString,
+            stringX,
+            stringY,
+            balloon.width,
+            balloon.height
+          );
+        });
+      }
+
+      function updateBalloonPositions() {
+        balloons.forEach((balloon) => {
+          if (!balloon.isGrowing) {
+            balloon.x += balloon.speedX;
+            balloon.y += balloon.speedY;
+            if (balloon.x < 0 || balloon.x + balloon.width > canvas.width)
+              balloon.speedX *= -1;
+            if (balloon.y < 0 || balloon.y + balloon.height > canvas.height)
+              balloon.speedY *= -1;
+          }
+        });
+      }
+
+      function blowBalloon(balloon) {
+        if (balloon.isBlowing) return; // Prevent re-triggering
+
+        balloon.isBlowing = true; // Set this only once per click
+        if (balloon.width < 150 && balloon.height < 150) {
+          balloon.width += 5;
+          balloon.height += 5;
+          balloon.x -= 12;
+          balloon.y -= 20;
+          console.log("blowBalloon executed");
+        } else {
+          balloon.isGrowing = false;
+          balloon.isBlowing = false;
+          console.log("Balloon grown");
+        }
+      }
+
+      let score = 0;
+      const scoreDisplay = document.querySelector(".score-display");
+      const playAgainButton = document.querySelector(".play-again-button");
+
+      function updateScore() {
+        score += 10;
+        scoreDisplay.textContent = `Score: ${score}`;
+      }
+
+      function resetGame() {
+        score = 0;
+        updateScore();
+        balloons.forEach((balloon) => {
+          balloon.isGrowing = true;
+          balloon.width = 30;
+          balloon.height = 30;
+          balloon.x = pump.x + 100;
+          balloon.y = pump.y + 200;
+        });
+        alphabetIndex = 0;
+        playAgainButton.style.display = "none";
+      }
+
+      let loadedImages = 0,
+        totalImages =
+          alphabetImages.length + balloonArray.length + pumpImages.length + 2;
+      function checkAllImagesLoaded() {
+        loadedImages++;
+        if (loadedImages === totalImages) gameLoop();
+      }
+
+      backgroundImage.onload = checkAllImagesLoaded;
+      alphabetImages.forEach((img) => (img.onload = checkAllImagesLoaded));
+      pumpImages.forEach((part) => (part.img.onload = checkAllImagesLoaded));
+      balloonArray.forEach((img) => (img.onload = checkAllImagesLoaded));
+      balloonString.onload = checkAllImagesLoaded;
+
+      function gameLoop() {
+        drawBackground();
+        assemblePump();
+
+        drawBalloons();
+        balloons.forEach((balloon) => {
+          balloon.isBlowing = false;
+          if (balloon.isGrowing) {
+            blowBalloon(balloon);
+            applyPumpAnimations();
+            console.log("PumpAnimation Executed");
+          }
+        });
+        updateBalloonPositions();
+        requestAnimationFrame(gameLoop);
+      }
+
+      canvas.addEventListener("click", function (event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        // check if a balloon has been clicked
+        for (let i = balloons.length - 1; i >= 0; i--) {
+          const balloon = balloons[i];
+
+          if (
+            x >= balloon.x &&
+            x <= balloon.x + balloon.width &&
+            y >= balloon.y &&
+            y <= balloon.y + balloon.height
+          ) {
+            // Playing the burst animation
+            const burstAnimation = document.querySelector(".burst-animation");
+            burstAnimation.style.display = "block";
+            burstAnimation.style.left = `${balloon.x}px`; // Position the GIF
+            burstAnimation.style.top = `${balloon.y}px`; // Position the GIF
+            console.log("Burst animation played");
+
+            // Remove the balloon from the array
+            balloons.splice(i, 1);
+
+            score += 10;
+
+            if (balloons.length === 0) {
+              // Game Over
+              playAgainButton.style.display = "block";
+            }
+
+            return;
+          }
+        }
+
+        const pumpX = pump.x;
+        const pumpY = pump.y;
+
+        if (x >= pumpX && x <= pumpX + 400 && y >= pumpY && y <= pumpY + 400) {
+          // If we've reached the end of the alphabet, stop creating new balloons
+          if (alphabetIndex >= alphabetImages.length) {
+            return; // No more balloons
+          }
+
+          // Apply pump animations
+          connectorShaking = true;
+          symbolShaking = true;
+          handleMoving = true;
+
+          setTimeout(() => {
+            connectorShaking = false;
+            symbolShaking = false;
+          }, 5000); // Stop shaking after 5 second
+
+          const newBalloon = {
+            x: pump.x + 100,
+            y: pump.y + 200,
+            speedX: Math.random() * 4 + 0.3,
+            speedY: Math.random() * 1 + 0.3,
+            width: 30,
+            height: 30,
+            isGrowing: true,
+            isBlowing: false,
+            alphabetImg: alphabetImages[alphabetIndex],
+            balloonImage:
+              balloonArray[Math.floor(Math.random() * balloonArray.length)],
+            balloonString: balloonString,
+          };
+
+          balloons.push(newBalloon);
+          alphabetIndex++;
+        }
+      });
+      playAgainButton.addEventListener("click", resetGame);
+    </script>
+  </body>
+</html>
